@@ -241,7 +241,7 @@ class VisionTransformer(nn.Module):
     def forward(self, x): 
 
         x = self.input_embedding(x) 
-        x = rearrange(x, 'num channel h w -> num (h w) channel') 
+        x = rearrange(x, 'num dim h w -> num (h w) dim') 
 
         batch_class_token = self.class_token.expand(x.shape[0], 1, -1)
         x = torch.cat([batch_class_token, x], dim=1) 
@@ -250,4 +250,87 @@ class VisionTransformer(nn.Module):
 
         x = self.head(enc_out)
 ```
-In this implementation,images are embedded using a convolutional layer, and a class token is added. The sequence is processed by an encoder with multiple layers. For output, a linear layer is used for fine-tuning or an MLP with Tanh for pre-training. Weights are initialized with trunc-normal and biases with zeros for stability. This setup leverages Transformer architecture for effective image classification.
+In this implementation,images are embedded using a convolutional layer, and a class token is added. The sequence is processed by an encoder with multiple layers. For output, a linear layer is used for fine-tuning or an MLP with Tanh for pre-training. Weights are initialized with trunc-normal and biases with zeros for stability. This setup leverages Transformer architecture for effective image classification. <br>
+the input => number of batch x (( image_size / patch_size)**2 +1) x hidden_dim <br>
+the output => number of classes
+
+## Training
+```py
+def Train(model, train_DL, val_DL, criterion, optimizer, scheduler = None):
+    loss_history = {"train": [], "val": []}
+    acc_history = {"train": [], "val": []}
+    best_loss = 9999
+    for ep in range(EPOCH):
+        model.train() # train mode
+        train_loss, train_acc, _ = loss_epoch(model, train_DL, criterion, optimizer = optimizer, scheduler = scheduler)
+        loss_history["train"] += [train_loss]
+        acc_history["train"] += [train_acc]
+
+        model.eval() # test mode
+        with torch.no_grad():
+            val_loss, val_acc, _ = loss_epoch(model, val_DL, criterion)
+            loss_history["val"] += [val_loss]
+            acc_history["val"] += [val_acc]
+            if val_loss < best_loss:
+                best_loss = val_loss
+                torch.save({"model": model,
+                            "ep": ep,
+                            "optimizer": optimizer,
+                            "scheduler": scheduler}, save_model_path)
+        # print loss
+        print(f"Epoch: {ep+1}, current_LR = {optimizer.param_groups[0]['lr']:.8f}")
+        print(f"train loss: {train_loss:.5f}, "
+              f"val loss: {val_loss:.5f} \n"
+              f"train acc: {train_acc:.1f} %, "
+              f"val acc: {val_acc:.1f} %")
+        print("-" * 20)
+
+    torch.save({"loss_history": loss_history,
+                "acc_history": acc_history,
+                "EPOCH": EPOCH,
+                "BATCH_SIZE": BATCH_SIZE}, save_history_path)
+
+def Test(model, test_DL, criterion):
+    model.eval() # test mode
+    with torch.no_grad():
+        test_loss, test_acc, rcorrect = loss_epoch(model, test_DL, criterion)
+    print(f"Test loss: {test_loss:.3f}")
+    print(f"Test accuracy: {rcorrect}/{len(test_DL.dataset)} ({round(test_acc,1)} %)")
+    return round(test_acc,1)
+
+def loss_epoch(model, DL, criterion, optimizer = None, scheduler = None):
+    N = len(DL.dataset) # the number of data
+    rloss=0; rcorrect = 0
+    for x_batch, y_batch in tqdm(DL, leave=False):
+        x_batch = x_batch.to(DEVICE)
+        y_batch = y_batch.to(DEVICE)
+        # inference
+        y_hat = model(x_batch)
+        # loss
+        loss = criterion(y_hat, y_batch)
+        # update
+        if optimizer is not None:
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+        if scheduler is not None:
+            scheduler.step()
+        # loss accumulation
+        loss_b = loss.item() * x_batch.shape[0]
+        rloss += loss_b
+        # accuracy accumulation
+        pred = y_hat.argmax(dim=1)
+        corrects_b = torch.sum(pred == y_batch).item()
+        rcorrect += corrects_b
+    loss_e = rloss/N
+    accuracy_e = rcorrect/N * 100
+
+    return loss_e, accuracy_e, rcorrect
+```
+Now, lets train our model.
+```py
+params = [p for p in model.parameters() if p.requires_grad]
+optimizer = optim.AdamW(params, lr=LR_init, weight_decay=LAMBDA)
+scheduler = CosineAnnealingLR(optimizer, T_max = int(len(train_DS)*EPOCH/BATCH_SIZE))
+Train(model, train_DL, val_DL, criterion, optimizer, scheduler)
+```
