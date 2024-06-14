@@ -1,4 +1,4 @@
-# ViT-impl
+# ViT-implementation
 This repository is an attempt to implement ViT from scratch. The goal is to understand the inner workings of BERT by building it step-by-step, rather than relying on pre-built libraries. Through this process, we aim to gain a deeper understanding of its architecture and functionality.
 
 # ViT
