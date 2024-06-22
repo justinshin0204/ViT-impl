@@ -148,7 +148,7 @@ class FeedForward(nn.Module):
     def forward(self, x):
         x = self.linear(x)
         return x
-``
+```
 Notice that we still refer to the number of consecutive sequences as "word".
 These are just standard Multi-Head Attention (MHA) and Feed Forward (FF) networks, initialized using Xavier initialization—nothing unusual.
 ## Transformer Encoder
