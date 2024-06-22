@@ -135,7 +135,7 @@ class MHA(nn.Module):
         return x, attention_weights
 ```
 ## Feed forward
-``py
+```py
 class FeedForward(nn.Module):
     def __init__(self, hidden_dim, d_ff, drop_p):
         super().__init__()
